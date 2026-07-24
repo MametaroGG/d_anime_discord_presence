@@ -7,7 +7,9 @@ dアニメストアで再生中の作品情報を、Discord の Rich Presence（
 [kitashimauni/d_anime_discord_presence](https://github.com/kitashimauni/d_anime_discord_presence)（MIT）の派生版です。
 
 <p align="center">
-  <img src="./assets/screenshot1.png" alt="Discord Presence の表示例" width="420" />
+  <img src="./assets/screenshot1.png" alt="Discord プロフィールでの Presence 表示例" width="360" />
+  &nbsp;
+  <img src="./assets/screenshot2.png" alt="Discord アクティビティ表示例" width="360" />
 </p>
 
 ## できること
