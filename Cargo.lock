@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "d_anime_discord_presence"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ctrlc",

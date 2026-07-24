@@ -9,7 +9,7 @@
     },
     "manifest_version": 3,
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtFsJb6ypfltwRCRioFt1Aq/pehZNT5+/yGlyx/Pj8QewOx0xUVEarl/6rQ5YqbFIBKYE7Dsz9s1SM645aE87smNB62MTawzNjkO7zWcIoZgnhKTP0E8QXQedONxyj7UxxlIxu+KrzVlwDFJ/4vXOiJo34cE6nnFYkZ0XUoqKmJkQFimcOl6TGM8h8ISgi84JcjOF32qjgNZej+0MnAwdFgdLLvguZ11BKbs3TdtkkVx3RKS9P1uokpbReSiTRulPi1d2apD10/GoGw7hoTQPk+JnxB/J4sgkICj1T4aMTE1g/Ix4VyV9RPz3uebQmkh0QJVzerwe6H0bYchIZOovsQIDAQAB",
-    "homepage_url": "https://github.com/kitashimauni/d_anime_discord_presence",
+    "homepage_url": "https://mametarogg.github.io/d_anime_discord_presence/store/privacy-policy.html",
     "content_scripts": [
         {
             "matches": [
