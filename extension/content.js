@@ -108,6 +108,16 @@ function findIdInPage(name) {
     return "";
 }
 
+function workIdFromPartId(partId) {
+    if (!partId || !/^\d+$/.test(partId) || partId.length <= 3) return "";
+    // partId is typically workId + 3-digit episode suffix (e.g. 20151017 -> 20151)
+    return partId.slice(0, -3);
+}
+
+function idsConsistent(workId, partId) {
+    return Boolean(workId && partId && partId.startsWith(workId) && partId.length > workId.length);
+}
+
 function getWorkAndPartIds(episodesText) {
     const params = new URLSearchParams(location.search);
     let partId = params.get("partId") || "";
@@ -121,8 +131,15 @@ function getWorkAndPartIds(episodesText) {
         if (!workId && workMatch) workId = workMatch[1];
     }
 
+    // Prefer partId from page; never trust a random workId that conflicts with partId.
     if (!partId) partId = findIdInPage("partId");
-    if (!workId) workId = findIdInPage("workId");
+
+    const derivedFromPart = workIdFromPartId(partId);
+    if (derivedFromPart) {
+        if (!workId || !idsConsistent(workId, partId)) {
+            workId = derivedFromPart;
+        }
+    }
 
     if (!workId) {
         const og = document.querySelector('meta[property="og:image"]');
@@ -132,11 +149,8 @@ function getWorkAndPartIds(episodesText) {
         const video = document.getElementsByTagName(VIDEO_TAG_NAME)[0];
         workId = extractWorkIdFromThumbnailUrl(video?.poster || "");
     }
-
-    if (!workId && partId.length > 3 && /^\d+$/.test(partId)) {
-        // partId is typically workId + 3-digit episode suffix (e.g. 20151016 -> 20151)
-        workId = partId.slice(0, -3);
-    }
+    // Page HTML often contains related-work workIds; use only as last resort.
+    if (!workId) workId = findIdInPage("workId");
 
     // Last resort: build partId from workId + 「第N話」
     if (workId && !partId) {
@@ -144,6 +158,12 @@ function getWorkAndPartIds(episodesText) {
         if (ep) {
             partId = workId + String(ep).padStart(3, "0");
         }
+    }
+
+    // Final consistency check: partId wins for the episode being watched.
+    if (partId && workId && !idsConsistent(workId, partId)) {
+        const fixed = workIdFromPartId(partId);
+        if (fixed) workId = fixed;
     }
 
     return { workId, partId };
@@ -161,8 +181,15 @@ function normalizeTime(timeStr) {
 function getThumbnailUrl() {
     if (!showThumbnail) return "";
 
-    let raw = "";
+    const { workId } = getWorkAndPartIds("");
+    // Prefer thumbnail derived from the resolved workId so related-work
+    // og:image / posters on the page cannot point at a different title.
+    if (workId) {
+        const fromId = thumbnailFromWorkId(workId);
+        if (fromId) return toSquareThumbnail(fromId);
+    }
 
+    let raw = "";
     const og = document.querySelector('meta[property="og:image"]');
     if (og && og.content && og.content.startsWith("http")) {
         raw = stripQuery(og.content);
@@ -172,13 +199,6 @@ function getThumbnailUrl() {
         const video = document.getElementsByTagName(VIDEO_TAG_NAME)[0];
         if (video && video.poster && video.poster.startsWith("http")) {
             raw = stripQuery(video.poster);
-        }
-    }
-
-    if (!raw) {
-        const { workId } = getWorkAndPartIds("");
-        if (workId) {
-            raw = thumbnailFromWorkId(workId);
         }
     }
 

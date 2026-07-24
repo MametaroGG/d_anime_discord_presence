@@ -222,33 +222,93 @@ fn episode_number_from_text(episodes: &str) -> Option<u32> {
     None
 }
 
-fn enrich_urls(data: &mut PresenceData) {
-    if data.work_url.is_empty() {
-        if let Some(work_id) = extract_work_id_from_thumbnail(&data.thumbnail) {
-            data.work_url =
-                format!("https://animestore.docomo.ne.jp/animestore/ci_pc?workId={work_id}");
-        }
+fn work_id_from_part_id(part_id: &str) -> Option<String> {
+    if part_id.len() > 3 && part_id.chars().all(|c| c.is_ascii_digit()) {
+        Some(part_id[..part_id.len() - 3].to_string())
+    } else {
+        None
     }
+}
 
-    if data.part_url.is_empty() {
-        let work_id = data
-            .work_url
-            .split("workId=")
-            .nth(1)
-            .map(|s| s.split('&').next().unwrap_or(s).to_string())
-            .or_else(|| extract_work_id_from_thumbnail(&data.thumbnail));
+fn extract_query_param(url: &str, name: &str) -> Option<String> {
+    let key = format!("{name}=");
+    url.split(&key)
+        .nth(1)
+        .map(|s| s.split('&').next().unwrap_or(s).to_string())
+        .filter(|s| !s.is_empty())
+}
 
-        if let (Some(work_id), Some(ep)) = (work_id, episode_number_from_text(&data.episodes)) {
-            let part_id = format!("{work_id}{ep:03}");
-            data.part_url = format!(
-                "https://animestore.docomo.ne.jp/animestore/ci_pc?workId={work_id}&partId={part_id}"
-            );
-            if data.work_url.is_empty() {
-                data.work_url =
-                    format!("https://animestore.docomo.ne.jp/animestore/ci_pc?workId={work_id}");
+fn enrich_urls(data: &mut PresenceData) {
+    let mut work_id = extract_query_param(&data.work_url, "workId")
+        .or_else(|| extract_work_id_from_thumbnail(&data.thumbnail));
+    let mut part_id = extract_query_param(&data.part_url, "partId");
+
+    // Prefer partId-derived workId when the two disagree (page HTML often
+    // contains unrelated workIds that pollute work_url / thumbnail).
+    if let Some(pid) = part_id.clone() {
+        if let Some(derived) = work_id_from_part_id(&pid) {
+            let inconsistent = work_id
+                .as_ref()
+                .map(|wid| !pid.starts_with(wid.as_str()))
+                .unwrap_or(true);
+            if inconsistent {
+                tracing::info!(
+                    old_work_id = ?work_id,
+                    derived_work_id = %derived,
+                    part_id = %pid,
+                    "fixing mismatched workId from partId"
+                );
+                work_id = Some(derived);
             }
         }
     }
+
+    if let (Some(wid), None) = (work_id.clone(), part_id.clone()) {
+        if let Some(ep) = episode_number_from_text(&data.episodes) {
+            part_id = Some(format!("{wid}{ep:03}"));
+        }
+    }
+
+    if let Some(wid) = work_id.clone() {
+        data.work_url =
+            format!("https://animestore.docomo.ne.jp/animestore/ci_pc?workId={wid}");
+        // Keep thumbnail aligned with the resolved work.
+        if data.thumbnail.is_empty()
+            || extract_work_id_from_thumbnail(&data.thumbnail).as_deref() != Some(wid.as_str())
+        {
+            if wid.len() >= 5 {
+                let id1 = &wid[..2];
+                let id2 = &wid[2..4];
+                let id3 = &wid[4..];
+                let raw = format!(
+                    "https://cs1.animestore.docomo.ne.jp/anime_kv/img/{id1}/{id2}/{id3}/{wid}_1_1.png"
+                );
+                data.thumbnail = format!(
+                    "https://wsrv.nl/?url={}&w=512&h=512&fit=contain&cbg=111111",
+                    urlencoding_encode(&raw)
+                );
+            }
+        }
+    }
+
+    if let (Some(wid), Some(pid)) = (work_id, part_id) {
+        data.part_url = format!(
+            "https://animestore.docomo.ne.jp/animestore/ci_pc?workId={wid}&partId={pid}"
+        );
+    }
+}
+
+fn urlencoding_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 fn presence_image(thumbnail: &str) -> &str {
