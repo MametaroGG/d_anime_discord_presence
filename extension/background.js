@@ -1,129 +1,162 @@
 let playing_uuid = "";
-let uuid_list = new Array(); // {uuid: str, playing: bool}
+let uuid_list = []; // {uuid, playing, tabId}
 
 let isNativeConnected = false;
 let port = {};
+let lastNativePayload = null;
 
-// connect to native host
 function assertNative() {
-    if (!isNativeConnected) {
-        if (port.disconnect) port.disconnect();
-        port = chrome.runtime.connectNative("com.danime.discord.presence.plus");
-        isNativeConnected = true;
-        port.onDisconnect.addListener(() => {
-            if (chrome.runtime.lastError) {
-                isNativeConnected = false;
-                console.log("Couldn't connect to native app");
-                console.log(chrome.runtime.lastError);
-            }
-            console.log("Disconnect")
-        })
-    }
-}
+    if (isNativeConnected) return;
 
-// update playing_uuid
-function update_playing_uuid() {
-    if (uuid_list.length === 0) {
-        console.log("disconnect");
-        port.postMessage({
-            message_type: "5",
-            title: "",
-            episodes: "",
-            subtitle: "",
-            current_time: "",
-            total_duration: "",
-            thumbnail: "",
-        });
-        port.disconnect();
+    if (port && port.disconnect) {
+        try { port.disconnect(); } catch (_) {}
+    }
+    port = chrome.runtime.connectNative("com.danime.discord.presence.plus");
+    isNativeConnected = true;
+    port.onDisconnect.addListener(() => {
+        if (chrome.runtime.lastError) {
+            console.log("native connect error", chrome.runtime.lastError);
+        }
+        console.log("Native host disconnect");
         isNativeConnected = false;
-        return;
-    }
-    playing_element = uuid_list.find((element) => { return element.playing; });
-    if (playing_element === undefined) {
-        console.log("clear presence");
-        port.postMessage({
-            message_type: "4",
-            title: "",
-            episodes: "",
-            subtitle: "",
-            current_time: "",
-            total_duration: "",
-            thumbnail: "",
-        });
-        playing_uuid = "";
-        return;
-    }
-    playing_uuid = playing_element.uuid;
-    console.log(playing_uuid);
-}
-
-// add uuid to uuid_list
-function add(data) {
-    uuid_list.unshift({
-        "uuid": data.uuid,
-        "playing": false,
     });
-}
 
-// playing to true
-function started(data) {
-    uuid_element = uuid_list.find((element) => { return element.uuid === data.uuid; });
-    uuid_element.playing = true;
-    playing_uuid = uuid_element.uuid;
-}
-
-// send to native host
-function send(data) {
-    if (!isNativeConnected) assertNative();
-    if (isNativeConnected && data.uuid === playing_uuid && !data.is_displayed) {
-        data.data.message_type = "3";
-        port.postMessage(data.data);
+    if (lastNativePayload) {
+        const payload = lastNativePayload;
+        setTimeout(() => {
+            if (!isNativeConnected) return;
+            try {
+                port.postMessage(payload);
+                console.log("Re-pushed after reconnect");
+            } catch (err) {
+                console.log("Re-push failed", err);
+            }
+        }, 200);
     }
 }
 
-// playing to false
-function stoped(data) {
-    uuid_element = uuid_list.find((element) => { return element.uuid === data.uuid; });
-    uuid_element.playing = false;
-    update_playing_uuid();
+function postNative(payload) {
+    assertNative();
+    if (!isNativeConnected) return;
+    lastNativePayload = payload;
+    try {
+        port.postMessage(payload);
+    } catch (err) {
+        console.log("postNative failed", err);
+        isNativeConnected = false;
+    }
 }
 
-// remove from uuid_list
-function remove(data) {
-    uuid_list = uuid_list.filter((element) => { return element.uuid !== data.uuid; });
-    update_playing_uuid();
+function disconnectNative(reason) {
+    console.log("disconnectNative:", reason);
+    // Real tab close only. Host clears Discord on message_type 5.
+    if (isNativeConnected) {
+        try {
+            port.postMessage({
+                message_type: "5",
+                title: "",
+                episodes: "",
+                subtitle: "",
+                current_time: "",
+                total_duration: "",
+                thumbnail: "",
+                work_url: "",
+                part_url: "",
+                paused: false,
+            });
+            port.disconnect();
+        } catch (_) {}
+    }
+    isNativeConnected = false;
+    lastNativePayload = null;
+    playing_uuid = "";
 }
 
-// error assertion
-function error(data) {
-    console.log("Error occured in" + data.uuid);
+function ensureEntry(uuid, tabId) {
+    let el = uuid_list.find((e) => e.uuid === uuid);
+    if (!el) {
+        el = { uuid, playing: true, tabId: tabId != null ? tabId : null };
+        uuid_list.unshift(el);
+    } else {
+        el.playing = true;
+        if (tabId != null) el.tabId = tabId;
+    }
+    playing_uuid = el.uuid;
+    return el;
 }
 
-chrome.runtime.onMessage.addListener((data) => {
-    console.log("get message");
-    console.log(data);
-    switch(data.type) {
-        case 0:
-            error(data);
-            break;
+function sendPresence(data, tabId) {
+    ensureEntry(data.uuid, tabId);
+    assertNative();
+    if (!isNativeConnected) return;
+    if (data.uuid !== playing_uuid) return;
+    if (data.is_displayed) return;
+
+    data.data.message_type = "3";
+    postNative(data.data);
+}
+
+function heartbeat(uuid, tabId) {
+    ensureEntry(uuid, tabId);
+    assertNative();
+}
+
+function removeByUuid(uuid, reason) {
+    console.log("removeByUuid", uuid, reason);
+    uuid_list = uuid_list.filter((e) => e.uuid !== uuid);
+    if (playing_uuid === uuid) playing_uuid = "";
+    if (uuid_list.length === 0) {
+        disconnectNative("no tabs left after " + reason);
+        return;
+    }
+    const next = uuid_list.find((e) => e.playing) || uuid_list[0];
+    if (next) {
+        next.playing = true;
+        playing_uuid = next.uuid;
+        if (lastNativePayload) postNative(lastNativePayload);
+    }
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    const victims = uuid_list.filter((e) => e.tabId === tabId);
+    for (const v of victims) {
+        removeByUuid(v.uuid, "tabs.onRemoved:" + tabId);
+    }
+});
+
+chrome.runtime.onMessage.addListener((data, sender) => {
+    const tabId = sender.tab ? sender.tab.id : null;
+    console.log("msg", data && data.type, "tab", tabId);
+
+    switch (data.type) {
         case 1:
-            add(data);
+            ensureEntry(data.uuid, tabId);
             break;
         case 2:
-            started(data);
+            ensureEntry(data.uuid, tabId);
+            assertNative();
             break;
         case 3:
-            send(data);
+            sendPresence(data, tabId);
             break;
         case 4:
-            stoped(data);
+            // Never clear on this legacy signal (old builds used it for pause).
+            console.log("ignore legacy clear/stop");
+            heartbeat(data.uuid, tabId);
+            if (lastNativePayload) {
+                postNative({ ...lastNativePayload, paused: true, message_type: "3" });
+            }
             break;
         case 5:
-            remove(data);
+            // Ignore unload signals from the page (false positives on pause).
+            console.log("ignore page unload signal");
+            heartbeat(data.uuid, tabId);
+            break;
+        case 6:
+            heartbeat(data.uuid, tabId);
             break;
         default:
-            error(data);
             break;
     }
     return true;
-})
+});

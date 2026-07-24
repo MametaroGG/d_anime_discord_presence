@@ -34,10 +34,16 @@ $exeTemp = Join-Path $TEMP_DIR "d_anime_discord_presence.exe"
 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $exeTemp -UseBasicParsing
 
 Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 400
+Start-Sleep -Milliseconds 300
 
 $exeDst = Join-Path $INSTALL_DIR "d_anime_discord_presence.exe"
+$exeBak = Join-Path $INSTALL_DIR "d_anime_discord_presence.exe.bak"
+if (Test-Path $exeDst) {
+    if (Test-Path $exeBak) { Remove-Item $exeBak -Force -ErrorAction SilentlyContinue }
+    Move-Item $exeDst $exeBak -Force
+}
 Copy-Item $exeTemp $exeDst -Force
+Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
 
 $config = @{ app_id = [int64]$DISCORD_APP_ID } | ConvertTo-Json
 [System.IO.File]::WriteAllText((Join-Path $INSTALL_DIR "config.json"), $config)

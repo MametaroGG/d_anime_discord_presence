@@ -44,11 +44,19 @@ if ([string]::IsNullOrWhiteSpace($DiscordAppId)) {
 $INSTALL_DIR = Join-Path $env:LOCALAPPDATA $NAME
 New-Item -Path $INSTALL_DIR -ItemType Directory -Force | Out-Null
 
-Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
-
 $EXE_DST = Join-Path $INSTALL_DIR "d_anime_discord_presence.exe"
+$EXE_BAK = Join-Path $INSTALL_DIR "d_anime_discord_presence.exe.bak"
+
+# Chrome may immediately restart the native host, keeping the exe locked.
+# On Windows a running exe can still be renamed; then we copy the new binary into place.
+Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 300
+if (Test-Path $EXE_DST) {
+    if (Test-Path $EXE_BAK) { Remove-Item $EXE_BAK -Force -ErrorAction SilentlyContinue }
+    Move-Item $EXE_DST $EXE_BAK -Force
+}
 Copy-Item $EXE_SRC $EXE_DST -Force
+Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
 
 $configPath = Join-Path $INSTALL_DIR "config.json"
 if ($writeConfig) {

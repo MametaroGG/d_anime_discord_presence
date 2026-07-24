@@ -1,14 +1,20 @@
 [package]
 name = "d_anime_discord_presence"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+
+[[bin]]
+name = "d_anime_discord_presence"
+path = "src/main.rs"
+
+[[bin]]
+name = "button_probe"
+path = "src/bin/button_probe.rs"
 
 [dependencies]
 chrono = "0.4.38"
-ctrlc = "3.4.4"
-discord-sdk = "0.3.7"
-serde = "1.0.204"
+discord-rich-presence = "1.1.0"
+serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.121"
-tokio = { version = "1.39.2", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"

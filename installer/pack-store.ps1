@@ -25,10 +25,13 @@ Remove-Item (Join-Path $stage "pub.der") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $stage "extension_id.txt") -Force -ErrorAction SilentlyContinue
 
 $manifestPath = Join-Path $stage "manifest.json"
-$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$manifestJson = [System.IO.File]::ReadAllText($manifestPath, $utf8NoBom)
+$manifest = $manifestJson | ConvertFrom-Json
 $manifest.PSObject.Properties.Remove("key")
-# homepage_url should point to your privacy policy / repo after you fork
-$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -Encoding utf8
+$outJson = $manifest | ConvertTo-Json -Depth 10
+# PowerShell ConvertTo-Json may escape non-ASCII; keep readable UTF-8
+[System.IO.File]::WriteAllText($manifestPath, $outJson, $utf8NoBom)
 
 Copy-Item $PEM (Join-Path $stage "key.pem") -Force
 

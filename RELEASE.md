@@ -13,7 +13,10 @@
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) を開く
 2. **New Application** → 名前は Presence に出る名前（例: `アニメ`）
-3. 左メニュー **Rich Presence → Art Assets** で、フォールバック用に `presence_icon` をアップロード（任意だが推奨）
+3. 左メニュー **Rich Presence → Art Assets** で次をアップロード（任意だが推奨）
+   - `presence_icon` … サムネ取得失敗時のフォールバック
+   - `play` / `pause` … 右下オーバーレイ用（リポジトリの `assets/play.png` / `assets/pause.png`）
+     ※コードは現状 CDN アイコンも使えるので、未アップロードでも表示されます
 4. **General Information** の **Application ID** を控える
 
 > 他人の Application ID のまま公開しないでください。
