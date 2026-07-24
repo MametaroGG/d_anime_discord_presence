@@ -26,6 +26,9 @@ dアニメストアで視聴中の作品名・話数・サブタイトルを Dis
 【リポジトリ】
 https://github.com/MametaroGG/d_anime_discord_presence
 
+※ Chrome ウェブストア開発者ダッシュボードの「ウェブサイト」欄も、必ず上記 URL にしてください。
+　ストア公開版では、この欄が「拡張機能のウェブサイトを開く」に使われることがあります（manifest の homepage_url より優先される場合あり）。
+
 【ネイティブホストのインストール（PowerShell）】
 iwr "https://raw.githubusercontent.com/MametaroGG/d_anime_discord_presence/main/installer/windows.ps1" | iex
 
