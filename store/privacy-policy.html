@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>プライバシーポリシー - dアニメ Discord Presence+</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+      line-height: 1.7;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+    }
+    h1, h2 { line-height: 1.3; }
+    code { font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <h1>プライバシーポリシー</h1>
+  <p>最終更新日: 2026-07-24</p>
+
+  <p>
+    本ポリシーは、Chrome 拡張機能「dアニメ Discord Presence+」（以下「本拡張」）および
+    同梱のネイティブホストアプリケーション（以下「ホスト」）における情報の取り扱いを説明します。
+  </p>
+
+  <h2>収集・利用する情報</h2>
+  <ul>
+    <li>dアニメストアの再生ページ上に表示されている作品名・話数・サブタイトル・再生時間</li>
+    <li>任意設定が有効な場合、作品サムネイル画像の URL（Discord への表示用）</li>
+  </ul>
+  <p>
+    これらの情報は、Discord の Rich Presence（視聴ステータス）表示のみに利用します。
+  </p>
+
+  <h2>送信先</h2>
+  <ul>
+    <li>ローカル PC 上のホスト（Chrome Native Messaging）</li>
+    <li>Discord デスクトップアプリ（ローカル IPC）</li>
+    <li>サムネイル表示が有効な場合、画像プロキシ（wsrv.nl）および画像配信元（dアニメストア CDN）</li>
+  </ul>
+  <p>開発者のサーバーへ視聴データを送信・保存することはありません。</p>
+
+  <h2>保存する情報</h2>
+  <p>
+    本拡張は、Chrome の同期ストレージにユーザー設定（例: サムネイル表示のオン/オフ）のみを保存します。
+    視聴履歴は保存しません。
+  </p>
+
+  <h2>権限について</h2>
+  <ul>
+    <li><code>nativeMessaging</code>: ローカルホストへ視聴情報を渡すため</li>
+    <li><code>storage</code>: 設定の保存のため</li>
+    <li>ホスト権限（dアニメストア再生ページ）: ページ上の表示情報を読み取るため</li>
+  </ul>
+
+  <h2>第三者サービス</h2>
+  <p>
+    Discord、dアニメストア、画像プロキシ（wsrv.nl）は各サービスのプライバシーポリシーが適用されます。
+  </p>
+
+  <p>
+    関連: <a href="./terms.html">利用規約</a>
+  </p>
+</body>
+</html>

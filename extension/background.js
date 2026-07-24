@@ -8,7 +8,7 @@ let port = {};
 function assertNative() {
     if (!isNativeConnected) {
         if (port.disconnect) port.disconnect();
-        port = chrome.runtime.connectNative("com.dadp.discord.presence");
+        port = chrome.runtime.connectNative("com.danime.discord.presence.plus");
         isNativeConnected = true;
         port.onDisconnect.addListener(() => {
             if (chrome.runtime.lastError) {
@@ -29,8 +29,10 @@ function update_playing_uuid() {
             message_type: "5",
             title: "",
             episodes: "",
+            subtitle: "",
             current_time: "",
             total_duration: "",
+            thumbnail: "",
         });
         port.disconnect();
         isNativeConnected = false;
@@ -43,8 +45,10 @@ function update_playing_uuid() {
             message_type: "4",
             title: "",
             episodes: "",
+            subtitle: "",
             current_time: "",
             total_duration: "",
+            thumbnail: "",
         });
         playing_uuid = "";
         return;

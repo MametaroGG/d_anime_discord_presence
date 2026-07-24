@@ -1,13 +1,15 @@
 {
-    "name": "dAnimeDiscordPresence",
-    "version": "0.1.1",
-    "description": "dアニメストアでの視聴ステータスをDiscordに表示する拡張です。",
+    "name": "dアニメ Discord Presence+",
+    "version": "0.1.0",
+    "description": "dアニメストアの視聴中作品名・話数・サブタイトルをDiscordのPresenceに表示します。",
     "icons": {
         "16": "icon16.png",
         "48": "icon48.png",
         "128": "icon128.png"
     },
     "manifest_version": 3,
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtFsJb6ypfltwRCRioFt1Aq/pehZNT5+/yGlyx/Pj8QewOx0xUVEarl/6rQ5YqbFIBKYE7Dsz9s1SM645aE87smNB62MTawzNjkO7zWcIoZgnhKTP0E8QXQedONxyj7UxxlIxu+KrzVlwDFJ/4vXOiJo34cE6nnFYkZ0XUoqKmJkQFimcOl6TGM8h8ISgi84JcjOF32qjgNZej+0MnAwdFgdLLvguZ11BKbs3TdtkkVx3RKS9P1uokpbReSiTRulPi1d2apD10/GoGw7hoTQPk+JnxB/J4sgkICj1T4aMTE1g/Ix4VyV9RPz3uebQmkh0QJVzerwe6H0bYchIZOovsQIDAQAB",
+    "homepage_url": "https://github.com/kitashimauni/d_anime_discord_presence",
     "content_scripts": [
         {
             "matches": [
@@ -20,8 +22,12 @@
     ],
     "permissions": [
         "nativeMessaging",
-        "background"
+        "storage"
     ],
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": false
+    },
     "background": {
         "service_worker": "background.js"
     }

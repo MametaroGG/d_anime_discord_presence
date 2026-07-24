@@ -1,2 +1,6 @@
 /target
 main.json
+extension/key.pem
+extension/pub.der
+extension/extension_id.txt
+dist/
