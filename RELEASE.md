@@ -47,17 +47,27 @@ cd <repo>
 5. プライバシーポリシー URL を設定
 6. 審査へ提出
 
-## 5. ネイティブホストをアイテム ID 向けに入れる
+## 5. ネイティブホストを公開する（利用者向け）
 
-自分の Discord App ID と、ストアの拡張 ID を指定:
+利用者は Discord App ID / 拡張 ID を意識しません。配布側で次を固定します。
+
+- `installer/windows.ps1` 内の `$DISCORD_APP_ID` / `$EXTENSION_ID`
+- GitHub Releases に `d_anime_discord_presence.exe` を添付
+
+ローカル確認用:
 
 ```powershell
 cargo build --release
 .\installer\windows-plus.ps1 -DiscordAppId "<YOUR_APP_ID>" -ExtensionId "<STORE_EXTENSION_ID>"
 ```
 
-利用者向けには、このインストーラ（または同等の手順）を README / ストア説明に必ず書くこと。  
-**拡張だけでは動きません。**
+利用者向けインストール（README 掲載用）:
+
+```powershell
+iwr "https://raw.githubusercontent.com/MametaroGG/d_anime_discord_presence/main/installer/windows.ps1" | iex
+```
+
+**拡張だけでは動きません。** README に必ずワンライナーを書いてください。
 
 ## 6. ローカル確認
 

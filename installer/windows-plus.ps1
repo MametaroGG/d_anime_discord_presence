@@ -1,7 +1,8 @@
-# Install host for dアニメ Discord Presence+ (user-local, no admin required)
+# Install host for dアニメ Discord Presence+ (maintainer / local build)
+# End users should use installer/windows.ps1 instead.
 param(
     [Parameter(Mandatory = $false)]
-    [string]$DiscordAppId = "",
+    [string]$DiscordAppId = "1530188395987599370",
 
     [Parameter(Mandatory = $false)]
     [string]$ExtensionId = "adddlcolaippknakkcfpdldfmkndlome",

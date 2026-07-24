@@ -1,104 +1,71 @@
-# d_anime_discord_presence installer for Windows (PowerShell)
-# This download latest version
+# dアニメ Discord Presence+ 利用者向けインストーラ (Windows)
+# Discord App ID / Chrome 拡張 ID は配布側で埋め込み済みです。
+# 使い方:
+#   iwr "https://raw.githubusercontent.com/MametaroGG/d_anime_discord_presence/main/installer/windows.ps1" | iex
 
-$NAME="d_anime_discord_presence"
-$EXTENSION_DOMEIN="com.dadp.discord.presence"
-$EXTENSION_ID="ifenbhbjocjihjlmbbmdegolkpjmecag"
-$JSON_NAME="main.json"
-$TEMP_DIR="$env:TEMP/$NAME"
+$ErrorActionPreference = "Stop"
 
-# Define the path to download
-if (Test-Path $env:ProgramFiles) {
-    $PROGRAM_FILES_DIR=$env:ProgramFiles
-} else {
-    Write-Host "[Error] env:ProgramFiles is not exist" -ForegroundColor Red
-    exit 1
-}
-Write-Host "[Info] Install to $PROGRAM_FILES_DIR"
-$INSTALL_DIR="$PROGRAM_FILES_DIR\$NAME"
+$NAME = "d_anime_discord_presence_plus"
+$EXTENSION_DOMAIN = "com.danime.discord.presence.plus"
+$DISCORD_APP_ID = "1530188395987599370"
+$EXTENSION_ID = "adddlcolaippknakkcfpdldfmkndlome"
+$REPO = "MametaroGG/d_anime_discord_presence"
+$INSTALL_DIR = Join-Path $env:LOCALAPPDATA $NAME
+$TEMP_DIR = Join-Path $env:TEMP $NAME
 
-# Check temp directory to download binary
-while (Test-Path $TEMP_DIR) {
-    Write-Host "$TEMP_DIR is already exist and delete this to continue" -ForegroundColor Yellow
-    $input = Read-Host "Delete '${TEMP_DIR}'?(y/n)"
-    if ($input -match "^(y|Y|Yes)$") {
-        Remove-Item "$TEMP_DIR" -Force -Recurse
-        break
-    } elseif ($input -match "^(n|N|No)$") {
-        Write-Host "Canceled"
-        exit 1
-    } else {
-        Write-Host "Invalid character"
-    }
-}
+Write-Host "[Info] Installing $NAME ..."
 
-# Create temp directory
-New-Item -Path "$TEMP_DIR" -ItemType "directory" | Out-Null
-
-# Download binary files
-Write-Host "`r`n[Info] Downloading`r`n"
-
-# Check fetch URL
-$LATEST_DATA = (curl.exe -L "https://api.github.com/repos/kitashimauni/d_anime_discord_presence/releases/latest" | ConvertFrom-Json)
-
-foreach ($asset in $LATEST_DATA.assets) {
-    $FILE_NAME = $asset.name
-    if ($FILE_NAME.Contains("exe")) {
-        curl.exe -L -H 'Accept: application/octet-stream' -o "$TEMP_DIR/$FILE_NAME" $asset.url
-    }
-}
-if ($LastExitCode -ne 0) {
-    Write-Host "[Error] Filed to download files" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "`r`n[Info] Download finished`r`n"
-
-# JSON data for native app
-$JSON_CONTENT = @"
-{
-    "name": "$EXTENSION_DOMEIN",
-    "description": "d-Anime Discord Presence",
-    "path": "$NAME.exe",
-    "type": "stdio",
-    "allowed_origins": [
-        "chrome-extension://$EXTENSION_ID/"
-    ]
-}
-"@
-
-$JSON_CONTENT | Out-File -FilePath "$TEMP_DIR/$JSON_NAME" -Encoding UTF8
-Write-Host "[Info] Created main.json"
-
-# Copy the files to the destination directory
-robocopy "$TEMP_DIR" "$INSTALL_DIR" /E /PURGE /r:0 | Out-Null
-if ($LastExitCode -ge 8) {
-    Write-Host "[Error] Filed to copy directory from $TEMP_DIR to $INSTALL_DIR" -ForegroundColor Red
-    exit 1
-}
-Write-Host "[info] Copy succeeded"
-
-# Clean up
-Remove-Item "$TEMP_DIR" -Force -Recurse
 if (Test-Path $TEMP_DIR) {
-    Write-Host "[info] Failed to clean up, but install finished successfully" -ForegroundColor Yellow
+    Remove-Item $TEMP_DIR -Recurse -Force
 }
-Write-Host "[info] Clean up finished"
+New-Item -Path $TEMP_DIR -ItemType Directory -Force | Out-Null
+New-Item -Path $INSTALL_DIR -ItemType Directory -Force | Out-Null
 
-# Regist to register
-reg add "HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\$EXTENSION_DOMEIN" /t "REG_SZ" /d "$INSTALL_DIR\$JSON_NAME" /f | Out-Null
-if ($LastExitCode -ne 0) {
-    Write-Host "[Error] Filed to regist config" -ForegroundColor Red
+Write-Host "[Info] Downloading latest release ..."
+$latest = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest"
+$asset = $latest.assets | Where-Object { $_.name -like "*.exe" } | Select-Object -First 1
+if (-not $asset) {
+    Write-Host "[Error] No .exe asset found in the latest GitHub Release." -ForegroundColor Red
+    Write-Host "Maintainers: publish a release that includes d_anime_discord_presence.exe" -ForegroundColor Yellow
     exit 1
 }
-Write-Host "[info] Config registed"
 
-reg add "HKEY_CURRENT_USER\Software\Google\Chrome\Extensions\$EXTENSION_ID" /t "REG_SZ" /v "update_url" /d "https://clients2.google.com/service/update2/crx" /f | Out-Null
-if ($LastExitCode -ne 0) {
-    Write-Host "[Error] Filed to regist config" -ForegroundColor Red
-    exit 1
+$exeTemp = Join-Path $TEMP_DIR "d_anime_discord_presence.exe"
+Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $exeTemp -UseBasicParsing
+
+Stop-Process -Name "d_anime_discord_presence" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 400
+
+$exeDst = Join-Path $INSTALL_DIR "d_anime_discord_presence.exe"
+Copy-Item $exeTemp $exeDst -Force
+
+$config = @{ app_id = [int64]$DISCORD_APP_ID } | ConvertTo-Json
+[System.IO.File]::WriteAllText((Join-Path $INSTALL_DIR "config.json"), $config)
+
+$manifest = [ordered]@{
+    name            = $EXTENSION_DOMAIN
+    description     = "d-Anime Discord Presence+"
+    path            = $exeDst
+    type            = "stdio"
+    allowed_origins = @("chrome-extension://$EXTENSION_ID/")
 }
-Write-Host "[info] Added Extension"
+$jsonPath = Join-Path $INSTALL_DIR "main.json"
+[System.IO.File]::WriteAllText($jsonPath, ($manifest | ConvertTo-Json))
 
-Write-Host "========================================"
+$nmKey = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$EXTENSION_DOMAIN"
+New-Item -Path $nmKey -Force | Out-Null
+Set-ItemProperty -Path $nmKey -Name "(default)" -Value $jsonPath
+
+# Encourage Chrome to pick up the store extension (same pattern as upstream)
+$extKey = "HKCU:\Software\Google\Chrome\Extensions\$EXTENSION_ID"
+New-Item -Path $extKey -Force | Out-Null
+Set-ItemProperty -Path $extKey -Name "update_url" -Value "https://clients2.google.com/service/update2/crx"
+
+Remove-Item $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host ""
 Write-Host "Installation completed successfully!" -ForegroundColor Green
+Write-Host "1. Install / enable the Chrome extension (Chrome Web Store)"
+Write-Host "2. Restart Chrome"
+Write-Host "3. Launch Discord, play on dアニメストア"
+Write-Host "4. Click the player time so it shows: current / total"
