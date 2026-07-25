@@ -15,8 +15,14 @@ let is_displayed = false;
 let prev_time = null;
 let prev_work_url = "";
 let prev_part_url = "";
+let prev_thumbnail = "";
 let last_force_send_at = 0;
+let seekPending = false;
 let showThumbnail = true;
+/** @type {Map<string, string>} */
+const thumbnailCache = new Map();
+/** @type {Set<string>} */
+const thumbnailFetchInFlight = new Set();
 /** @type {null | {
  *  title: string, episodes: string, subtitle: string,
  *  current_time: string, total_duration: string, thumbnail: string,
@@ -178,34 +184,168 @@ function normalizeTime(timeStr) {
     return trimmed;
 }
 
-function getThumbnailUrl() {
+function formatHms(totalSeconds) {
+    const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return [
+        String(h).padStart(2, "0"),
+        String(m).padStart(2, "0"),
+        String(sec).padStart(2, "0"),
+    ].join(":");
+}
+
+function timeFromVideo(video) {
+    if (!video || !Number.isFinite(video.currentTime)) return null;
+    const current = formatHms(video.currentTime);
+    const total =
+        Number.isFinite(video.duration) && video.duration > 0
+            ? formatHms(video.duration)
+            : "";
+    return { current, total };
+}
+
+function timeToSecs(timeStr) {
+    if (!timeStr) return 0;
+    const parts = timeStr.split(":").map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return 0;
+}
+
+function urlHasAssetId(url, id) {
+    if (!url || !id) return false;
+    // Match /28060002_... or /28060_1_1.png — not 28060 inside 28060003.
+    return new RegExp(`(?:^|[/])${id}(?:_|\\.)`).test(url);
+}
+
+function isScenePreviewThumb(url) {
+    return /\/thumbnails\//i.test(url) || /_\d{4,}\.(?:jpe?g|png|webp)$/i.test(url);
+}
+
+function isEpisodePackageArt(url, partId) {
+    if (!url || !partId || isScenePreviewThumb(url)) return false;
+    // e.g. 28060002_1_2.png — not 28060002_00209.jpg
+    return new RegExp(`(?:^|[/])${partId}_1_\\d\\.(?:png|jpe?g|webp)$`, "i").test(url);
+}
+
+function isWorkPackageArt(url, workId) {
+    if (!url || !workId || isScenePreviewThumb(url)) return false;
+    return (
+        urlHasAssetId(url, workId) &&
+        (/_1_1\.(?:png|jpe?g|webp)$/i.test(url) || /_1_d\d*\.(?:png|jpe?g|webp)$/i.test(url))
+    );
+}
+
+function findThumbnailInPage(workId, partId) {
+    const urls = [];
+    const push = (u) => {
+        if (!u || typeof u !== "string") return;
+        const clean = stripQuery(u.trim());
+        if (!clean.startsWith("http")) return;
+        if (!/animestore\.docomo\.ne\.jp|anime_kv|\/anime\//i.test(clean)) return;
+        if (isScenePreviewThumb(clean)) return;
+        if (!urls.includes(clean)) urls.push(clean);
+    };
+
+    const og = document.querySelector('meta[property="og:image"]');
+    if (og) push(og.content);
+
+    // Do NOT use video.poster — it often becomes a changing scene preview.
+    document.querySelectorAll("img[src]").forEach((img) => push(img.currentSrc || img.src));
+
+    if (partId) {
+        const epArt = urls.find((u) => isEpisodePackageArt(u, partId));
+        if (epArt) return epArt;
+    }
+
+    if (workId) {
+        const workArt = urls.find((u) => isWorkPackageArt(u, workId));
+        if (workArt) return workArt;
+    }
+
+    return "";
+}
+
+function thumbnailCacheKey(workId, partId) {
+    return partId ? `part:${partId}` : workId ? `work:${workId}` : "";
+}
+
+function requestWorkPageThumbnail(workId, partId) {
+    const key = thumbnailCacheKey(workId, partId);
+    if (!workId || !key || thumbnailCache.has(key) || thumbnailFetchInFlight.has(key)) {
+        return;
+    }
+    thumbnailFetchInFlight.add(key);
+    fetch(`https://animestore.docomo.ne.jp/animestore/ci_pc?workId=${encodeURIComponent(workId)}`, {
+        credentials: "include",
+        cache: "force-cache",
+    })
+        .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
+        .then((html) => {
+            let found = null;
+            if (partId) {
+                const ep = html.match(
+                    new RegExp(
+                        `https://cs1\\.animestore\\.docomo\\.ne\\.jp/[^"'\\s<>]*/${partId}_1_\\d\\.(?:png|jpe?g|webp)`,
+                        "i",
+                    ),
+                );
+                if (ep && !isScenePreviewThumb(ep[0])) found = ep[0];
+            }
+            if (!found) {
+                const work = html.match(
+                    new RegExp(
+                        `https://cs1\\.animestore\\.docomo\\.ne\\.jp/[^"'\\s<>]*/${workId}_1_1\\.(?:png|jpe?g|webp)`,
+                        "i",
+                    ),
+                );
+                if (work && !isScenePreviewThumb(work[0])) found = work[0];
+            }
+            if (found) {
+                thumbnailCache.set(key, stripQuery(found));
+                is_displayed = false;
+                console.log("[d-anime-presence] cached package thumbnail", key, stripQuery(found));
+            }
+        })
+        .catch((err) => {
+            console.log("[d-anime-presence] work thumbnail fetch failed", key, err);
+        })
+        .finally(() => {
+            thumbnailFetchInFlight.delete(key);
+        });
+}
+
+function getThumbnailUrl(workId, partId) {
     if (!showThumbnail) return "";
 
-    const { workId } = getWorkAndPartIds("");
-    // Prefer thumbnail derived from the resolved workId so related-work
-    // og:image / posters on the page cannot point at a different title.
+    if (!workId && !partId) {
+        ({ workId, partId } = getWorkAndPartIds(""));
+    }
+    const cacheKey = thumbnailCacheKey(workId, partId);
+
+    // Once we have stable package art for this part/work, keep it for the session.
+    if (cacheKey && thumbnailCache.has(cacheKey)) {
+        return toSquareThumbnail(thumbnailCache.get(cacheKey));
+    }
+
+    const fromPage = findThumbnailInPage(workId, partId);
+    if (fromPage) {
+        if (cacheKey) thumbnailCache.set(cacheKey, fromPage);
+        return toSquareThumbnail(fromPage);
+    }
+
     if (workId) {
+        requestWorkPageThumbnail(workId, partId);
         const fromId = thumbnailFromWorkId(workId);
         if (fromId) return toSquareThumbnail(fromId);
     }
 
-    let raw = "";
-    const og = document.querySelector('meta[property="og:image"]');
-    if (og && og.content && og.content.startsWith("http")) {
-        raw = stripQuery(og.content);
-    }
-
-    if (!raw) {
-        const video = document.getElementsByTagName(VIDEO_TAG_NAME)[0];
-        if (video && video.poster && video.poster.startsWith("http")) {
-            raw = stripQuery(video.poster);
-        }
-    }
-
-    return toSquareThumbnail(raw);
+    return "";
 }
 
-function buildPausedPayload() {
+function buildPresencePayload({ paused = false, resumed = false, seeked = false } = {}) {
     if (!lastPresence || !lastPresence.title) {
         return null;
     }
@@ -215,9 +355,26 @@ function buildPausedPayload() {
         is_displayed: false,
         data: {
             ...lastPresence,
-            paused: true,
+            paused: Boolean(paused),
+            resumed: Boolean(resumed) && !paused,
+            seeked: Boolean(seeked),
         },
     };
+}
+
+function buildPausedPayload() {
+    return buildPresencePayload({ paused: true });
+}
+
+function buildResumedPayload() {
+    return buildPresencePayload({ resumed: true });
+}
+
+function syncLastPresenceTimeFromVideo(video) {
+    const times = timeFromVideo(video);
+    if (!times || !lastPresence) return;
+    lastPresence.current_time = times.current;
+    if (times.total) lastPresence.total_duration = times.total;
 }
 
 function hookVideoEvents(video) {
@@ -227,6 +384,7 @@ function hookVideoEvents(video) {
         if (type_now !== TYPE_PLAYING) return;
         type_now = TYPE_STOPPED;
         is_displayed = true;
+        syncLastPresenceTimeFromVideo(video);
         const payload = buildPausedPayload();
         if (payload) {
             console.log("[d-anime-presence] pause event → keep presence");
@@ -234,10 +392,30 @@ function hookVideoEvents(video) {
         }
     });
     video.addEventListener("play", () => {
-        if (type_now === TYPE_STOPPED) {
-            type_now = TYPE_PLAYING;
-            is_displayed = false;
+        if (type_now !== TYPE_STOPPED) return;
+        type_now = TYPE_PLAYING;
+        is_displayed = false;
+        syncLastPresenceTimeFromVideo(video);
+        const payload = buildResumedPayload();
+        if (payload) {
+            console.log("[d-anime-presence] play event → resume presence");
+            chrome.runtime.sendMessage(payload, () => true);
+        } else {
             chrome.runtime.sendMessage({ type: 2, uuid: UUID }, () => true);
+        }
+    });
+    video.addEventListener("seeked", () => {
+        seekPending = true;
+        is_displayed = false;
+        syncLastPresenceTimeFromVideo(video);
+        const payload = buildPresencePayload({
+            paused: Boolean(video.paused),
+            seeked: true,
+        });
+        if (payload) {
+            console.log("[d-anime-presence] seeked → refresh timestamps", lastPresence?.current_time);
+            chrome.runtime.sendMessage(payload, () => true);
+            last_force_send_at = Date.now();
         }
     });
 }
@@ -248,6 +426,7 @@ function getInfo() {
     data.data = new Object();
 
     let justPaused = false;
+    let justResumed = false;
 
     const videoElement = document.getElementsByTagName(VIDEO_TAG_NAME)[0];
     if (!videoElement) {
@@ -266,8 +445,7 @@ function getInfo() {
     if (type_now === TYPE_STOPPED && playing) {
         type_now = TYPE_PLAYING;
         is_displayed = false;
-        data.type = 2;
-        return data;
+        justResumed = true;
     } else if (type_now === TYPE_PLAYING && !playing) {
         type_now = TYPE_STOPPED;
         justPaused = true;
@@ -306,8 +484,11 @@ function getInfo() {
     }
     const time = timeNode.textContent;
     const time_splited = time.split(" / ");
-    const currentTime = normalizeTime(time_splited[0]);
-    const totalDuration = normalizeTime(time_splited[1] || "");
+    // Prefer the video clock — DOM time can lag behind seeks.
+    const fromVideo = timeFromVideo(videoElement);
+    const currentTime = fromVideo?.current || normalizeTime(time_splited[0]);
+    const totalDuration =
+        fromVideo?.total || normalizeTime(time_splited[1] || "");
     const { workId, partId } = getWorkAndPartIds(episodes);
 
     data.data.title = title;
@@ -315,8 +496,10 @@ function getInfo() {
     data.data.subtitle = subtitle;
     data.data.current_time = currentTime;
     data.data.total_duration = totalDuration;
-    data.data.thumbnail = getThumbnailUrl();
+    data.data.thumbnail = getThumbnailUrl(workId, partId);
     data.data.paused = Boolean(videoElement.paused) || justPaused;
+    data.data.resumed = justResumed && !data.data.paused;
+    data.data.seeked = seekPending && !data.data.paused;
     data.data.work_url = workId
         ? `https://animestore.docomo.ne.jp/animestore/ci_pc?workId=${workId}`
         : (lastPresence?.work_url || "");
@@ -348,33 +531,42 @@ function getInfo() {
         paused: data.data.paused,
         work_url: data.data.work_url,
         part_url: data.data.part_url,
+        thumbnail: data.data.thumbnail,
     });
 
     const urlsChanged =
         data.data.work_url !== prev_work_url || data.data.part_url !== prev_part_url;
+    const thumbnailChanged = data.data.thumbnail !== prev_thumbnail;
+    const justSeeked = seekPending;
+    seekPending = false;
     const nowMs = Date.now();
     const forcePeriodic = !data.data.paused && nowMs - last_force_send_at > 15000;
+    const prevSec = timeToSecs(prev_time);
+    const nowSec = timeToSecs(data.data.current_time);
+    // Normal playback advances ~0.5s per poll; jumps mean seek / scrub.
+    const seekJump = prev_time && Math.abs(nowSec - prevSec) > 1.5;
 
-    if (justPaused || !prev_time || !is_displayed || urlsChanged || forcePeriodic) {
+    if (
+        justPaused ||
+        justResumed ||
+        justSeeked ||
+        seekJump ||
+        !prev_time ||
+        !is_displayed ||
+        urlsChanged ||
+        thumbnailChanged ||
+        forcePeriodic
+    ) {
         data.is_displayed = false;
         is_displayed = true;
         last_force_send_at = nowMs;
     } else {
-        const [ph, pm, ps] = prev_time.split(":").map(Number);
-        const prev_sec = ph * 3600 + pm * 60 + ps;
-        const [nh, nm, ns] = data.data.current_time.split(":").map(Number);
-        const now_sec = nh * 3600 + nm * 60 + ns;
-        if (Math.abs(now_sec - prev_sec) > 3) {
-            data.is_displayed = false;
-            is_displayed = true;
-            last_force_send_at = nowMs;
-        } else {
-            data.is_displayed = true;
-        }
+        data.is_displayed = true;
     }
     prev_time = data.data.current_time;
     prev_work_url = data.data.work_url;
     prev_part_url = data.data.part_url;
+    prev_thumbnail = data.data.thumbnail;
 
     return data;
 }

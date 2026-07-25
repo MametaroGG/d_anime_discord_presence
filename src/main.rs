@@ -38,6 +38,10 @@ struct PresenceData {
     part_url: String,
     #[serde(default)]
     paused: bool,
+    #[serde(default)]
+    resumed: bool,
+    #[serde(default)]
+    seeked: bool,
 }
 
 fn install_dir() -> Option<PathBuf> {
@@ -272,21 +276,20 @@ fn enrich_urls(data: &mut PresenceData) {
     if let Some(wid) = work_id.clone() {
         data.work_url =
             format!("https://animestore.docomo.ne.jp/animestore/ci_pc?workId={wid}");
-        // Keep thumbnail aligned with the resolved work.
-        if data.thumbnail.is_empty()
-            || extract_work_id_from_thumbnail(&data.thumbnail).as_deref() != Some(wid.as_str())
-        {
-            if wid.len() >= 5 {
-                let id1 = &wid[..2];
-                let id2 = &wid[2..4];
-                let id3 = &wid[4..];
-                let raw = format!(
-                    "https://cs1.animestore.docomo.ne.jp/anime_kv/img/{id1}/{id2}/{id3}/{wid}_1_1.png"
-                );
-                data.thumbnail = format!(
-                    "https://wsrv.nl/?url={}&w=512&h=512&fit=contain&cbg=111111",
-                    urlencoding_encode(&raw)
-                );
+        // Do NOT invent anime_kv thumbnails here. Newer titles use hashed
+        // /anime/.../TOKEN/ paths that only the extension can scrape from DOM.
+        // If the extension sent a thumbnail for a different workId, clear it
+        // so Discord does not keep a broken "?" asset.
+        if !data.thumbnail.is_empty() {
+            if let Some(thumb_wid) = extract_work_id_from_thumbnail(&data.thumbnail) {
+                if thumb_wid != wid {
+                    tracing::info!(
+                        thumb_work_id = %thumb_wid,
+                        work_id = %wid,
+                        "dropping mismatched thumbnail"
+                    );
+                    data.thumbnail.clear();
+                }
             }
         }
     }
@@ -296,19 +299,6 @@ fn enrich_urls(data: &mut PresenceData) {
             "https://animestore.docomo.ne.jp/animestore/ci_pc?workId={wid}&partId={pid}"
         );
     }
-}
-
-fn urlencoding_encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
 }
 
 fn presence_image(thumbnail: &str) -> &str {
@@ -627,15 +617,23 @@ fn main() {
                 continue;
             }
 
-            // Playing update. If we are latched paused, ignore stale playing
-            // payloads until playback time advances (resume).
+            // Playing update. Clear pause latch on explicit resume/seek, or once
+            // playback time has moved forward (filters stale playing echoes).
             if force_paused {
                 let now_secs = time_to_secs(&data.current_time);
-                let advanced = (now_secs - paused_at_secs).abs();
-                if advanced < 2 {
+                let advanced = now_secs - paused_at_secs;
+                if data.resumed || data.seeked || advanced > 0 {
                     tracing::info!(
                         advanced,
-                        "ignoring playing update while pause-latched; re-assert pause"
+                        resumed = data.resumed,
+                        seeked = data.seeked,
+                        "pause latch cleared (playback resumed/seeked)"
+                    );
+                    force_paused = false;
+                } else {
+                    tracing::info!(
+                        advanced,
+                        "ignoring stale playing update while pause-latched; re-assert pause"
                     );
                     if let Some(mut paused) = last_playing.clone() {
                         paused.paused = true;
@@ -644,8 +642,6 @@ fn main() {
                     }
                     continue;
                 }
-                tracing::info!(advanced, "pause latch cleared (playback resumed)");
-                force_paused = false;
             }
 
             enrich_urls(&mut data);

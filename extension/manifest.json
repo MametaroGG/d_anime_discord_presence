@@ -1,6 +1,6 @@
 {
     "name": "dアニメ Discord Presence+",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "dアニメストアの視聴中作品名・話数・サブタイトルをDiscordのPresenceに表示します。",
     "icons": {
         "16": "icon16.png",
